@@ -202,13 +202,8 @@ class BingSearchAgent:
         except:
             return None
     
-    async def extract_page_elements(self, url: str, max_items: int = 50) -> Optional[PageElements]:
-        """深度提取页面所有关键元素 - 增强版
-        
-        Args:
-            url: 目标URL
-            max_items: 各类型元素最大提取数量（默认50）
-        """
+    async def extract_page_elements(self, url: str) -> Optional[PageElements]:
+        """深度提取页面所有关键元素 - 增强版（提取全部，不限制）"""
         try:
             # 增加超时到60秒，网络慢也能加载
             await self.page.goto(url, wait_until='domcontentloaded', timeout=60000)
@@ -222,22 +217,20 @@ class BingSearchAgent:
             cookies = await self.page.context.cookies()
             
             # 智能提取主要文本内容（去除导航、广告等噪音）
-            page_data = await self.page.evaluate(f'''() => {{
-                const maxItems = {max_items};
-                
+            page_data = await self.page.evaluate('''() => {
                 // 清理函数：移除隐藏元素和脚本样式
-                const cleanText = (el) => {{
+                const cleanText = (el) => {
                     const clone = el.cloneNode(true);
                     // 移除脚本、样式、导航、广告等噪音
                     clone.querySelectorAll('script, style, nav, header, footer, aside, .advertisement, .ads, [class*="ad-"], [class*="banner"]').forEach(e => e.remove());
                     return clone.innerText || '';
-                }};
+                };
                 
                 // 提取标题结构
-                const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({{
+                const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({
                     level: parseInt(h.tagName[1]),
                     text: h.innerText.trim().substring(0, 200)
-                }})).filter(h => h.text.length > 0);
+                })).filter(h => h.text.length > 0);
                 
                 // 提取段落（过滤短文本）
                 const paragraphs = Array.from(document.querySelectorAll('p, article p, .content p, main p'))
@@ -245,19 +238,19 @@ class BingSearchAgent:
                     .filter(t => t.length > 20 && t.length < 500);
                 
                 // 提取列表
-                const lists = Array.from(document.querySelectorAll('ul, ol')).map(list => ({{
+                const lists = Array.from(document.querySelectorAll('ul, ol')).map(list => ({
                     type: list.tagName.toLowerCase(),
                     items: Array.from(list.querySelectorAll('li')).map(li => li.innerText.trim()).filter(t => t.length > 0)
-                }})).filter(l => l.items.length > 0);
+                })).filter(l => l.items.length > 0);
                 
                 // 提取表格
-                const tables = Array.from(document.querySelectorAll('table')).map(table => {{
+                const tables = Array.from(document.querySelectorAll('table')).map(table => {
                     const headers = Array.from(table.querySelectorAll('th')).map(th => th.innerText.trim());
                     const rows = Array.from(table.querySelectorAll('tr')).slice(1).map(tr => 
                         Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim())
                     ).filter(row => row.length > 0);
-                    return {{ headers, rows }};
-                }}).filter(t => t.rows.length > 0);
+                    return { headers, rows };
+                }).filter(t => t.rows.length > 0);
                 
                 // 提取代码块
                 const codeBlocks = Array.from(document.querySelectorAll('pre, code, .code, .highlight'))
@@ -269,61 +262,61 @@ class BingSearchAgent:
                 const bodyText = mainContent ? cleanText(mainContent) : cleanText(document.body);
                 
                 // 提取所有链接
-                const links = Array.from(document.querySelectorAll('a[href]')).map(a => ({{
+                const links = Array.from(document.querySelectorAll('a[href]')).map(a => ({
                     text: a.textContent.trim().substring(0, 100),
                     href: a.href,
                     type: a.getAttribute('data-type') || 'link'
-                }})).filter(l => l.href && !l.href.startsWith('javascript:') && l.text.length > 0);
+                })).filter(l => l.href && !l.href.startsWith('javascript:') && l.text.length > 0);
                 
                 // 提取表单（增强版）
-                const forms = Array.from(document.querySelectorAll('form')).map(form => {{
-                    const inputs = Array.from(form.querySelectorAll('input, select, textarea')).map(i => ({{
+                const forms = Array.from(document.querySelectorAll('form')).map(form => {
+                    const inputs = Array.from(form.querySelectorAll('input, select, textarea')).map(i => ({
                         name: i.name,
                         type: i.type || i.tagName.toLowerCase(),
                         placeholder: i.placeholder || '',
                         required: i.required,
                         value: i.value || ''
-                    }}));
-                    return {{
+                    }));
+                    return {
                         action: form.action,
                         method: form.method || 'GET',
                         name: form.name || form.id || '',
                         inputs: inputs
-                    }};
-                }});
+                    };
+                });
                 
                 // 提取按钮
-                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], .btn, [role="button"]')).map(b => ({{
+                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], .btn, [role="button"]')).map(b => ({
                     text: (b.textContent || b.value || '').trim().substring(0, 50),
                     type: b.type || 'button',
                     id: b.id || '',
                     action: b.getAttribute('onclick') || b.getAttribute('data-action') || ''
-                }})).filter(b => b.text.length > 0);
+                })).filter(b => b.text.length > 0);
                 
                 // 提取外部脚本
                 const scripts = Array.from(document.querySelectorAll('script[src]')).map(s => s.src);
                 
                 // 提取元数据
-                const meta = {{}};
-                document.querySelectorAll('meta[name], meta[property]').forEach(m => {{
+                const meta = {};
+                document.querySelectorAll('meta[name], meta[property]').forEach(m => {
                     const key = m.getAttribute('name') || m.getAttribute('property');
                     if (key) meta[key] = m.content;
-                }});
+                });
                 
-                return {{
-                    text_content: bodyText.substring(0, 8000),
-                    headings: headings.slice(0, maxItems),
-                    paragraphs: paragraphs.slice(0, maxItems),
-                    lists: lists.slice(0, maxItems),
-                    tables: tables.slice(0, maxItems),
-                    code_blocks: codeBlocks.slice(0, maxItems),
-                    links: links.slice(0, maxItems),
-                    forms: forms.slice(0, maxItems),
-                    buttons: buttons.slice(0, maxItems),
-                    scripts: scripts.slice(0, maxItems),
+                return {
+                    text_content: bodyText.substring(0, 10000),
+                    headings: headings,
+                    paragraphs: paragraphs,
+                    lists: lists,
+                    tables: tables,
+                    code_blocks: codeBlocks,
+                    links: links,
+                    forms: forms,
+                    buttons: buttons,
+                    scripts: scripts,
                     meta: meta
-                }};
-            }}''')
+                };
+            }''')
             
             return PageElements(
                 title=title,
@@ -364,65 +357,94 @@ def format_output(results: List[SearchResult]) -> str:
     return '\n'.join(lines)
 
 
-def format_page_elements(elements: PageElements) -> str:
-    """格式化页面元素输出 - 增强版"""
+def format_page_elements(elements: PageElements, show_limit: int = 50) -> str:
+    """格式化页面元素输出 - 增强版
+    
+    Args:
+        elements: 页面元素数据
+        show_limit: 显示数量限制（默认50），设为0表示不限制
+    """
+    limit = show_limit if show_limit > 0 else 9999
+    
     lines = []
     lines.append("╔══════════════════════════════════════╗")
     lines.append("║     🔍 搜神猎手 (SouShen Hunter)      ║")
     lines.append("║      深度页面分析报告                ║")
     lines.append("╚══════════════════════════════════════╝")
     lines.append(f"\n📄 页面: {elements.title}")
-    lines.append(f"🔗 URL: {elements.url}\n")
+    lines.append(f"🔗 URL: {elements.url}")
+    lines.append(f"📊 显示限制: {show_limit} 个/类型\n")
     
     # Cookie信息
     if elements.cookies:
-        lines.append(f"🍪 Cookies ({len(elements.cookies)} 个):")
-        for c in elements.cookies[:5]:
+        total = len(elements.cookies)
+        show = min(total, limit)
+        lines.append(f"🍪 Cookies ({total} 个, 显示{show}个):")
+        for c in elements.cookies[:limit]:
             lines.append(f"   • {c.get('name', '')}: {c.get('value', '')[:50]}...")
-        if len(elements.cookies) > 5:
-            lines.append(f"   ... 还有 {len(elements.cookies) - 5} 个")
+        if total > limit:
+            lines.append(f"   ... 还有 {total - limit} 个")
         lines.append("")
     
     # 主要内容文本
     if elements.text_content:
         lines.append("📝 主要内容:")
-        text = elements.text_content[:800].replace('\n', ' ')
+        text = elements.text_content[:2000].replace('\n', ' ')
         lines.append(f"   {text}...")
         lines.append("")
     
     # 标题结构
     if elements.headings:
-        lines.append(f"📌 标题结构 ({len(elements.headings)} 个):")
-        for h in elements.headings[:10]:
+        total = len(elements.headings)
+        show = min(total, limit)
+        lines.append(f"📌 标题结构 ({total} 个, 显示{show}个):")
+        for h in elements.headings[:limit]:
             indent = "  " * (h['level'] - 1)
             lines.append(f"   {indent}{'#' * h['level']} {h['text'][:60]}")
+        if total > limit:
+            lines.append(f"   ... 还有 {total - limit} 个")
         lines.append("")
     
     # 段落
     if elements.paragraphs:
-        lines.append(f"📃 关键段落 ({len(elements.paragraphs)} 个):")
-        for p in elements.paragraphs[:3]:
-            lines.append(f"   • {p[:100]}...")
+        total = len(elements.paragraphs)
+        show = min(total, limit)
+        lines.append(f"📃 关键段落 ({total} 个, 显示{show}个):")
+        for p in elements.paragraphs[:limit]:
+            lines.append(f"   • {p[:150]}...")
+        if total > limit:
+            lines.append(f"   ... 还有 {total - limit} 个")
         lines.append("")
     
     # 列表
     if elements.lists:
-        lines.append(f"📋 列表 ({len(elements.lists)} 个):")
-        for lst in elements.lists[:2]:
-            lines.append(f"   {lst['type'].upper()} ({lst['items']} 项)")
+        total = len(elements.lists)
+        show = min(total, limit)
+        lines.append(f"📋 列表 ({total} 个, 显示{show}个):")
+        for lst in elements.lists[:limit]:
+            lines.append(f"   {lst['type'].upper()} ({len(lst['items'])} 项)")
+            for item in lst['items'][:5]:
+                lines.append(f"     - {item[:80]}")
+        if total > limit:
+            lines.append(f"   ... 还有 {total - limit} 个")
         lines.append("")
     
     # 代码块
     if elements.code_blocks:
-        lines.append(f"💻 代码块 ({len(elements.code_blocks)} 个):")
-        for code in elements.code_blocks[:2]:
-            preview = code[:80].replace('\n', ' ')
+        total = len(elements.code_blocks)
+        show = min(total, limit)
+        lines.append(f"💻 代码块 ({total} 个, 显示{show}个):")
+        for code in elements.code_blocks[:limit]:
+            preview = code[:100].replace('\n', ' ')
             lines.append(f"   ```{preview}...```")
+        if total > limit:
+            lines.append(f"   ... 还有 {total - limit} 个")
         lines.append("")
     
-    # 表单（Pentest重点）
+    # 表单（Pentest重点）- 全显示
     if elements.forms:
-        lines.append(f"🎯 表单 ({len(elements.forms)} 个) - Pentest重点:")
+        total = len(elements.forms)
+        lines.append(f"🎯 表单 ({total} 个) - Pentest重点:")
         for form in elements.forms:
             lines.append(f"   • Form: {form.get('name', 'unnamed')}")
             lines.append(f"     Action: {form['action']}")
@@ -436,23 +458,42 @@ def format_page_elements(elements: PageElements) -> str:
     
     # API端点/链接
     if elements.links:
+        total = len(elements.links)
+        show = min(total, limit)
         api_links = [l for l in elements.links if '/api/' in l['href'] or 'graphql' in l['href']]
-        lines.append(f"⛓️  链接 ({len(elements.links)} 个):")
+        lines.append(f"⛓️  链接 ({total} 个, 显示{show}个):")
         if api_links:
             lines.append(f"   🔥 API端点发现 ({len(api_links)} 个):")
-            for link in api_links[:5]:
+            for link in api_links[:limit]:
                 lines.append(f"      • {link['text'][:30]} → {link['href'][:60]}")
-        for link in elements.links[:5]:
+        for link in elements.links[:limit]:
             if link not in api_links:
                 lines.append(f"   • {link['text'][:30]} → {link['href'][:60]}")
+        if total > limit:
+            lines.append(f"   ... 还有 {total - limit} 个")
         lines.append("")
     
     # 按钮
     if elements.buttons:
-        lines.append(f"🔘 交互按钮 ({len(elements.buttons)} 个):")
-        for btn in elements.buttons[:5]:
+        total = len(elements.buttons)
+        show = min(total, limit)
+        lines.append(f"🔘 交互按钮 ({total} 个, 显示{show}个):")
+        for btn in elements.buttons[:limit]:
             action = f" [{btn.get('action', '')[:30]}]" if btn.get('action') else ""
             lines.append(f"   • {btn['text']}{action}")
+        if total > limit:
+            lines.append(f"   ... 还有 {total - limit} 个")
+        lines.append("")
+    
+    # 外部脚本
+    if elements.scripts:
+        total = len(elements.scripts)
+        show = min(total, limit)
+        lines.append(f"📜 外部脚本 ({total} 个, 显示{show}个):")
+        for script in elements.scripts[:limit]:
+            lines.append(f"   • {script}")
+        if total > limit:
+            lines.append(f"   ... 还有 {total - limit} 个")
         lines.append("")
     
     # 元数据
@@ -461,7 +502,7 @@ def format_page_elements(elements: PageElements) -> str:
         found = {k: v for k, v in elements.meta.items() if any(i in k.lower() for i in important)}
         if found:
             lines.append("🏷️  关键Meta:")
-            for k, v in list(found.items())[:5]:
+            for k, v in list(found.items())[:limit]:
                 lines.append(f"   • {k}: {v[:80]}")
             lines.append("")
     
@@ -529,16 +570,15 @@ async def main():
         if parsed['mode'] == 'deep':
             # 深度分析模式 - 全面自动化提取
             url = parsed['url']
-            limit = parsed.get('limit', 50)
+            show_limit = parsed.get('limit', 50)
             print("╔══════════════════════════════════════╗")
             print("║     🔍 搜神猎手 (SouShen Hunter)      ║")
             print("║      正在执行深度页面分析...          ║")
             print("╚══════════════════════════════════════╝")
-            print(f"\n🎯 目标: {url}")
-            print(f"📊 提取限制: {limit} 个/类型\n")
-            elements = await agent.extract_page_elements(url, max_items=limit)
+            print(f"\n🎯 目标: {url}\n")
+            elements = await agent.extract_page_elements(url)
             if elements:
-                print(format_page_elements(elements))
+                print(format_page_elements(elements, show_limit=show_limit))
             else:
                 print("❌ 页面分析失败")
         else:
