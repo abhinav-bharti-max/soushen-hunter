@@ -311,32 +311,65 @@ def format_page_elements(elements: PageElements) -> str:
     return '\n'.join(lines)
 
 
+def parse_args():
+    """解析命令行参数"""
+    args = sys.argv[1:]
+    
+    # 检查是否是深度分析模式
+    if '--deep' in args:
+        deep_idx = args.index('--deep')
+        if deep_idx + 1 >= len(args):
+            print("Error: --deep requires a URL argument")
+            print("Usage: python bing_search.py --deep <url>")
+            sys.exit(1)
+        return {
+            'mode': 'deep',
+            'url': args[deep_idx + 1],
+            'query': None
+        }
+    
+    # 普通搜索模式
+    if len(args) < 1:
+        return None
+    
+    return {
+        'mode': 'search',
+        'query': args[0],
+        'url': None
+    }
+
+
 async def main():
     """主函数 - CLI 入口"""
-    if len(sys.argv) < 2:
-        print("Usage: python bing_search.py <query> [--deep <url>]")
+    parsed = parse_args()
+    
+    if parsed is None:
+        print("Usage:")
+        print("  python bing_search.py <query>           # Bing 搜索")
+        print("  python bing_search.py --deep <url>      # 深度页面分析")
+        print("\nExamples:")
+        print('  python bing_search.py "OpenClaw AI"')
+        print('  python bing_search.py --deep https://example.com')
         print("\nEnvironment variables:")
         print("  CHROME_PATH    Path to Chrome executable (optional)")
         sys.exit(1)
-    
-    query = sys.argv[1]
-    deep_mode = '--deep' in sys.argv
-    deep_url = sys.argv[sys.argv.index('--deep') + 1] if deep_mode else None
     
     # 支持通过环境变量指定 Chrome 路径
     chrome_path = os.environ.get('CHROME_PATH') or os.environ.get('CHROME_BIN')
     
     async with BingSearchAgent(headless=True, chrome_path=chrome_path) as agent:
-        if deep_url:
-            # 深度分析模式
-            elements = await agent.extract_page_elements(deep_url)
+        if parsed['mode'] == 'deep':
+            # 深度分析模式 - 全面自动化提取
+            url = parsed['url']
+            print(f"🔍 正在深度分析: {url}\n")
+            elements = await agent.extract_page_elements(url)
             if elements:
                 print(format_page_elements(elements))
             else:
-                print("Failed to extract page elements")
+                print("❌ 页面分析失败")
         else:
             # 搜索模式
-            results = await agent.search(query, num_results=10)
+            results = await agent.search(parsed['query'], num_results=10)
             print(format_output(results))
             
             # 同时输出 JSON 格式供程序使用

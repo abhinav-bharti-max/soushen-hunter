@@ -45,7 +45,19 @@ python scripts/bing_search.py "搜索关键词"
 
 ## 🚀 使用
 
-### 基础搜索
+### CLI 命令
+
+```bash
+# Bing 搜索
+python scripts/bing_search.py "搜索关键词"
+
+# 深度页面分析（自动化全面提取）
+python scripts/bing_search.py --deep "https://目标网址"
+```
+
+### Python API
+
+**基础搜索**
 ```python
 from scripts.bing_search import BingSearchAgent
 import asyncio
@@ -59,21 +71,14 @@ async def main():
 asyncio.run(main())
 ```
 
-### 深度页面分析
+**深度页面分析**
 ```python
 async with BingSearchAgent() as agent:
     elements = await agent.extract_page_elements("https://example.com")
     print(f"找到 {len(elements.links)} 个链接")
     print(f"发现 {len(elements.forms)} 个表单")
-```
-
-### CLI 使用
-```bash
-# 搜索
-python scripts/bing_search.py "搜索关键词"
-
-# 深度分析页面
-python scripts/bing_search.py "关键词" --deep "https://目标网址"
+    print(f"提取 {len(elements.buttons)} 个按钮")
+    print(f"发现 {len(elements.scripts)} 个外部脚本")
 ```
 
 ## 📁 结构
