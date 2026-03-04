@@ -202,8 +202,13 @@ class BingSearchAgent:
         except:
             return None
     
-    async def extract_page_elements(self, url: str) -> Optional[PageElements]:
-        """深度提取页面所有关键元素 - 增强版"""
+    async def extract_page_elements(self, url: str, max_items: int = 50) -> Optional[PageElements]:
+        """深度提取页面所有关键元素 - 增强版
+        
+        Args:
+            url: 目标URL
+            max_items: 各类型元素最大提取数量（默认50）
+        """
         try:
             # 增加超时到60秒，网络慢也能加载
             await self.page.goto(url, wait_until='domcontentloaded', timeout=60000)
@@ -217,20 +222,22 @@ class BingSearchAgent:
             cookies = await self.page.context.cookies()
             
             # 智能提取主要文本内容（去除导航、广告等噪音）
-            page_data = await self.page.evaluate('''() => {
+            page_data = await self.page.evaluate(f'''() => {{
+                const maxItems = {max_items};
+                
                 // 清理函数：移除隐藏元素和脚本样式
-                const cleanText = (el) => {
+                const cleanText = (el) => {{
                     const clone = el.cloneNode(true);
                     // 移除脚本、样式、导航、广告等噪音
                     clone.querySelectorAll('script, style, nav, header, footer, aside, .advertisement, .ads, [class*="ad-"], [class*="banner"]').forEach(e => e.remove());
                     return clone.innerText || '';
-                };
+                }};
                 
                 // 提取标题结构
-                const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({
+                const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({{
                     level: parseInt(h.tagName[1]),
                     text: h.innerText.trim().substring(0, 200)
-                })).filter(h => h.text.length > 0);
+                }})).filter(h => h.text.length > 0);
                 
                 // 提取段落（过滤短文本）
                 const paragraphs = Array.from(document.querySelectorAll('p, article p, .content p, main p'))
@@ -238,19 +245,19 @@ class BingSearchAgent:
                     .filter(t => t.length > 20 && t.length < 500);
                 
                 // 提取列表
-                const lists = Array.from(document.querySelectorAll('ul, ol')).map(list => ({
+                const lists = Array.from(document.querySelectorAll('ul, ol')).map(list => ({{
                     type: list.tagName.toLowerCase(),
                     items: Array.from(list.querySelectorAll('li')).map(li => li.innerText.trim()).filter(t => t.length > 0)
-                })).filter(l => l.items.length > 0);
+                }})).filter(l => l.items.length > 0);
                 
                 // 提取表格
-                const tables = Array.from(document.querySelectorAll('table')).map(table => {
+                const tables = Array.from(document.querySelectorAll('table')).map(table => {{
                     const headers = Array.from(table.querySelectorAll('th')).map(th => th.innerText.trim());
                     const rows = Array.from(table.querySelectorAll('tr')).slice(1).map(tr => 
                         Array.from(tr.querySelectorAll('td')).map(td => td.innerText.trim())
                     ).filter(row => row.length > 0);
-                    return { headers, rows };
-                }).filter(t => t.rows.length > 0);
+                    return {{ headers, rows }};
+                }}).filter(t => t.rows.length > 0);
                 
                 // 提取代码块
                 const codeBlocks = Array.from(document.querySelectorAll('pre, code, .code, .highlight'))
@@ -262,61 +269,61 @@ class BingSearchAgent:
                 const bodyText = mainContent ? cleanText(mainContent) : cleanText(document.body);
                 
                 // 提取所有链接
-                const links = Array.from(document.querySelectorAll('a[href]')).map(a => ({
+                const links = Array.from(document.querySelectorAll('a[href]')).map(a => ({{
                     text: a.textContent.trim().substring(0, 100),
                     href: a.href,
                     type: a.getAttribute('data-type') || 'link'
-                })).filter(l => l.href && !l.href.startsWith('javascript:') && l.text.length > 0);
+                }})).filter(l => l.href && !l.href.startsWith('javascript:') && l.text.length > 0);
                 
                 // 提取表单（增强版）
-                const forms = Array.from(document.querySelectorAll('form')).map(form => {
-                    const inputs = Array.from(form.querySelectorAll('input, select, textarea')).map(i => ({
+                const forms = Array.from(document.querySelectorAll('form')).map(form => {{
+                    const inputs = Array.from(form.querySelectorAll('input, select, textarea')).map(i => ({{
                         name: i.name,
                         type: i.type || i.tagName.toLowerCase(),
                         placeholder: i.placeholder || '',
                         required: i.required,
                         value: i.value || ''
-                    }));
-                    return {
+                    }}));
+                    return {{
                         action: form.action,
                         method: form.method || 'GET',
                         name: form.name || form.id || '',
                         inputs: inputs
-                    };
-                });
+                    }};
+                }});
                 
                 // 提取按钮
-                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], .btn, [role="button"]')).map(b => ({
+                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], .btn, [role="button"]')).map(b => ({{
                     text: (b.textContent || b.value || '').trim().substring(0, 50),
                     type: b.type || 'button',
                     id: b.id || '',
                     action: b.getAttribute('onclick') || b.getAttribute('data-action') || ''
-                })).filter(b => b.text.length > 0);
+                }})).filter(b => b.text.length > 0);
                 
                 // 提取外部脚本
                 const scripts = Array.from(document.querySelectorAll('script[src]')).map(s => s.src);
                 
                 // 提取元数据
-                const meta = {};
-                document.querySelectorAll('meta[name], meta[property]').forEach(m => {
+                const meta = {{}};
+                document.querySelectorAll('meta[name], meta[property]').forEach(m => {{
                     const key = m.getAttribute('name') || m.getAttribute('property');
                     if (key) meta[key] = m.content;
-                });
+                }});
                 
-                return {
-                    text_content: bodyText.substring(0, 5000), // 限制长度
-                    headings: headings.slice(0, 20),
-                    paragraphs: paragraphs.slice(0, 30),
-                    lists: lists.slice(0, 10),
-                    tables: tables.slice(0, 5),
-                    code_blocks: codeBlocks.slice(0, 10),
-                    links: links.slice(0, 50),
-                    forms: forms,
-                    buttons: buttons.slice(0, 30),
-                    scripts: scripts.slice(0, 20),
+                return {{
+                    text_content: bodyText.substring(0, 8000),
+                    headings: headings.slice(0, maxItems),
+                    paragraphs: paragraphs.slice(0, maxItems),
+                    lists: lists.slice(0, maxItems),
+                    tables: tables.slice(0, maxItems),
+                    code_blocks: codeBlocks.slice(0, maxItems),
+                    links: links.slice(0, maxItems),
+                    forms: forms.slice(0, maxItems),
+                    buttons: buttons.slice(0, maxItems),
+                    scripts: scripts.slice(0, maxItems),
                     meta: meta
-                };
-            }''')
+                }};
+            }}''')
             
             return PageElements(
                 title=title,
@@ -464,29 +471,37 @@ def format_page_elements(elements: PageElements) -> str:
 def parse_args():
     """解析命令行参数"""
     args = sys.argv[1:]
+    result = {'mode': None, 'query': None, 'url': None, 'limit': 50}
+    
+    # 解析 --limit 参数
+    if '--limit' in args:
+        limit_idx = args.index('--limit')
+        if limit_idx + 1 < len(args):
+            try:
+                result['limit'] = int(args[limit_idx + 1])
+                args.pop(limit_idx + 1)
+                args.pop(limit_idx)
+            except ValueError:
+                pass
     
     # 检查是否是深度分析模式
     if '--deep' in args:
         deep_idx = args.index('--deep')
         if deep_idx + 1 >= len(args):
             print("Error: --deep requires a URL argument")
-            print("Usage: python bing_search.py --deep <url>")
+            print("Usage: python bing_search.py --deep <url> [--limit N]")
             sys.exit(1)
-        return {
-            'mode': 'deep',
-            'url': args[deep_idx + 1],
-            'query': None
-        }
+        result['mode'] = 'deep'
+        result['url'] = args[deep_idx + 1]
+        return result
     
     # 普通搜索模式
     if len(args) < 1:
         return None
     
-    return {
-        'mode': 'search',
-        'query': args[0],
-        'url': None
-    }
+    result['mode'] = 'search'
+    result['query'] = args[0]
+    return result
 
 
 async def main():
@@ -495,11 +510,14 @@ async def main():
     
     if parsed is None:
         print("Usage:")
-        print("  python bing_search.py <query>           # Bing 搜索")
-        print("  python bing_search.py --deep <url>      # 深度页面分析")
+        print("  python bing_search.py <query>                    # Bing 搜索")
+        print("  python bing_search.py --deep <url> [--limit N]   # 深度页面分析")
+        print("\nOptions:")
+        print("  --limit N      每种类型最大提取数量 (默认50)")
         print("\nExamples:")
         print('  python bing_search.py "OpenClaw AI"')
         print('  python bing_search.py --deep https://example.com')
+        print('  python bing_search.py --deep https://example.com --limit 100')
         print("\nEnvironment variables:")
         print("  CHROME_PATH    Path to Chrome executable (optional)")
         sys.exit(1)
@@ -511,12 +529,14 @@ async def main():
         if parsed['mode'] == 'deep':
             # 深度分析模式 - 全面自动化提取
             url = parsed['url']
+            limit = parsed.get('limit', 50)
             print("╔══════════════════════════════════════╗")
             print("║     🔍 搜神猎手 (SouShen Hunter)      ║")
             print("║      正在执行深度页面分析...          ║")
             print("╚══════════════════════════════════════╝")
-            print(f"\n🎯 目标: {url}\n")
-            elements = await agent.extract_page_elements(url)
+            print(f"\n🎯 目标: {url}")
+            print(f"📊 提取限制: {limit} 个/类型\n")
+            elements = await agent.extract_page_elements(url, max_items=limit)
             if elements:
                 print(format_page_elements(elements))
             else:
