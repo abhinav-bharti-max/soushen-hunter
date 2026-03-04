@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Bing Search Agent - 高性能搜索引擎
+搜神猎手 (SouShen Hunter) - 高性能 Bing 搜索引擎
 使用 Playwright 底层 API，最大化过滤有效信息
+输出格式：JSON（便于 LLM 处理）
 """
 
 import asyncio
@@ -16,31 +17,24 @@ from urllib.parse import urljoin, urlparse
 try:
     from playwright.async_api import async_playwright, Page, Browser
 except ImportError:
-    print("ERROR: playwright not installed. Run: pip install playwright")
+    print(json.dumps({"error": "playwright not installed. Run: pip install playwright"}, ensure_ascii=False))
     sys.exit(1)
 
 
 def find_chrome_executable() -> Optional[str]:
     """自动查找 Chrome 可执行文件路径"""
-    
-    # 可能的 Chrome 路径列表
     possible_paths = [
-        # 环境变量
         os.environ.get('CHROME_PATH'),
         os.environ.get('CHROME_BIN'),
-        # Linux 常见路径
         '/usr/bin/google-chrome',
         '/usr/bin/google-chrome-stable',
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser',
         '/snap/bin/chromium',
-        # macOS
         '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        # Windows
         r'C:\Program Files\Google\Chrome\Application\chrome.exe',
         r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
-        # 用户本地安装
         os.path.expanduser('~/.local/bin/chrome-for-testing-dir/chrome'),
         os.path.expanduser('~/.local/bin/chrome-for-testing/chrome'),
         os.path.expanduser('~/chrome-linux64/chrome'),
@@ -50,7 +44,6 @@ def find_chrome_executable() -> Optional[str]:
         if path and os.path.isfile(path) and os.access(path, os.X_OK):
             return path
     
-    # 尝试在 PATH 中查找
     chrome_names = ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'chrome']
     for name in chrome_names:
         path = shutil.which(name)
@@ -67,7 +60,7 @@ class SearchResult:
     url: str
     snippet: str
     source: str
-    result_type: str = "organic"  # organic, ad, news, video, etc.
+    result_type: str = "organic"
 
 
 @dataclass
@@ -75,18 +68,18 @@ class PageElements:
     """页面元素提取结果"""
     title: str
     url: str
-    text_content: str           # 主要文本内容（清洗后）
-    headings: List[Dict]        # 标题结构 h1-h6
-    paragraphs: List[str]       # 段落文本
-    lists: List[Dict]           # 列表内容
-    tables: List[Dict]          # 表格数据
-    code_blocks: List[str]      # 代码块
-    links: List[Dict[str, str]] # [{text, href, type}]
-    forms: List[Dict[str, Any]] # [{action, method, inputs}]
+    text_content: str
+    headings: List[Dict]
+    paragraphs: List[str]
+    lists: List[Dict]
+    tables: List[Dict]
+    code_blocks: List[str]
+    links: List[Dict[str, str]]
+    forms: List[Dict[str, Any]]
     buttons: List[Dict[str, str]]
     scripts: List[str]
     meta: Dict[str, str]
-    cookies: List[Dict]         # Cookie信息
+    cookies: List[Dict]
 
 
 class BingSearchAgent:
@@ -101,7 +94,6 @@ class BingSearchAgent:
     async def __aenter__(self):
         self.playwright = await async_playwright().start()
         
-        # 配置启动参数
         launch_options = {
             'headless': self.headless,
             'args': [
@@ -113,13 +105,8 @@ class BingSearchAgent:
             ]
         }
         
-        # 如果找到 Chrome 路径，使用它
         if self.chrome_path:
-            print(f"Using Chrome: {self.chrome_path}")
             launch_options['executable_path'] = self.chrome_path
-        else:
-            print("Chrome not found, using Playwright bundled Chromium...")
-            print("Tip: Install Chrome or set CHROME_PATH environment variable")
         
         self.browser = await self.playwright.chromium.launch(**launch_options)
         context = await self.browser.new_context(
@@ -140,23 +127,13 @@ class BingSearchAgent:
         results = []
         
         try:
-            # 访问 Bing
             await self.page.goto('https://www.bing.com', wait_until='domcontentloaded')
-            
-            # 输入搜索词
             search_box = await self.page.wait_for_selector('[name="q"]')
             await search_box.fill(query)
             await search_box.press('Enter')
-            
-            # 等待结果加载
             await self.page.wait_for_load_state('networkidle')
             
-            # 提取搜索结果 - 使用高性能选择器
-            result_selectors = [
-                'li.b_algo',  # 主要搜索结果
-                '.b_ad li',   # 广告结果
-                '.news-card', # 新闻结果
-            ]
+            result_selectors = ['li.b_algo', '.b_ad li', '.news-card']
             
             for selector in result_selectors:
                 elements = await self.page.query_selector_all(selector)
@@ -165,18 +142,17 @@ class BingSearchAgent:
                         result = await self._extract_result(elem)
                         if result and result.url:
                             results.append(result)
-                    except Exception as e:
+                    except Exception:
                         continue
                         
         except Exception as e:
-            print(f"Search error: {e}", file=sys.stderr)
+            pass
             
         return results[:num_results]
     
     async def _extract_result(self, element) -> Optional[SearchResult]:
         """从单个元素提取搜索结果"""
         try:
-            # 提取标题
             title_elem = await element.query_selector('h2 a, .b_title a, a')
             if not title_elem:
                 return None
@@ -184,11 +160,9 @@ class BingSearchAgent:
             title = await title_elem.inner_text()
             url = await title_elem.get_attribute('href')
             
-            # 提取摘要
             snippet_elem = await element.query_selector('.b_caption p, .b_snippet, p')
             snippet = await snippet_elem.inner_text() if snippet_elem else ''
             
-            # 提取来源
             source_elem = await element.query_selector('.b_attribution cite, cite')
             source = await source_elem.inner_text() if source_elem else urlparse(url).netloc
             
@@ -203,47 +177,36 @@ class BingSearchAgent:
             return None
     
     async def extract_page_elements(self, url: str) -> Optional[PageElements]:
-        """深度提取页面所有关键元素 - 增强版（提取全部，不限制）"""
+        """深度提取页面所有关键元素"""
         try:
-            # 增加超时到60秒，网络慢也能加载
             await self.page.goto(url, wait_until='domcontentloaded', timeout=60000)
-            await asyncio.sleep(1)  # 等待动态内容渲染
+            await asyncio.sleep(1)
             
-            # 提取基础信息
             title = await self.page.title()
             current_url = self.page.url
-            
-            # 获取 cookies
             cookies = await self.page.context.cookies()
             
-            # 智能提取主要文本内容（去除导航、广告等噪音）
             page_data = await self.page.evaluate('''() => {
-                // 清理函数：移除隐藏元素和脚本样式
                 const cleanText = (el) => {
                     const clone = el.cloneNode(true);
-                    // 移除脚本、样式、导航、广告等噪音
                     clone.querySelectorAll('script, style, nav, header, footer, aside, .advertisement, .ads, [class*="ad-"], [class*="banner"]').forEach(e => e.remove());
                     return clone.innerText || '';
                 };
                 
-                // 提取标题结构
                 const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({
                     level: parseInt(h.tagName[1]),
-                    text: h.innerText.trim().substring(0, 200)
+                    text: h.innerText.trim()
                 })).filter(h => h.text.length > 0);
                 
-                // 提取段落（过滤短文本）
                 const paragraphs = Array.from(document.querySelectorAll('p, article p, .content p, main p'))
                     .map(p => p.innerText.trim())
-                    .filter(t => t.length > 20 && t.length < 500);
+                    .filter(t => t.length > 20);
                 
-                // 提取列表
                 const lists = Array.from(document.querySelectorAll('ul, ol')).map(list => ({
                     type: list.tagName.toLowerCase(),
                     items: Array.from(list.querySelectorAll('li')).map(li => li.innerText.trim()).filter(t => t.length > 0)
                 })).filter(l => l.items.length > 0);
                 
-                // 提取表格
                 const tables = Array.from(document.querySelectorAll('table')).map(table => {
                     const headers = Array.from(table.querySelectorAll('th')).map(th => th.innerText.trim());
                     const rows = Array.from(table.querySelectorAll('tr')).slice(1).map(tr => 
@@ -252,23 +215,19 @@ class BingSearchAgent:
                     return { headers, rows };
                 }).filter(t => t.rows.length > 0);
                 
-                // 提取代码块
                 const codeBlocks = Array.from(document.querySelectorAll('pre, code, .code, .highlight'))
                     .map(c => c.innerText.trim())
                     .filter(t => t.length > 10);
                 
-                // 提取主要内容区域文本
                 const mainContent = document.querySelector('main, article, .content, .post, #content, [role="main"]');
                 const bodyText = mainContent ? cleanText(mainContent) : cleanText(document.body);
                 
-                // 提取所有链接
                 const links = Array.from(document.querySelectorAll('a[href]')).map(a => ({
-                    text: a.textContent.trim().substring(0, 100),
+                    text: a.textContent.trim(),
                     href: a.href,
                     type: a.getAttribute('data-type') || 'link'
                 })).filter(l => l.href && !l.href.startsWith('javascript:') && l.text.length > 0);
                 
-                // 提取表单（增强版）
                 const forms = Array.from(document.querySelectorAll('form')).map(form => {
                     const inputs = Array.from(form.querySelectorAll('input, select, textarea')).map(i => ({
                         name: i.name,
@@ -285,18 +244,15 @@ class BingSearchAgent:
                     };
                 });
                 
-                // 提取按钮
                 const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], .btn, [role="button"]')).map(b => ({
-                    text: (b.textContent || b.value || '').trim().substring(0, 50),
+                    text: (b.textContent || b.value || '').trim(),
                     type: b.type || 'button',
                     id: b.id || '',
                     action: b.getAttribute('onclick') || b.getAttribute('data-action') || ''
                 })).filter(b => b.text.length > 0);
                 
-                // 提取外部脚本
                 const scripts = Array.from(document.querySelectorAll('script[src]')).map(s => s.src);
                 
-                // 提取元数据
                 const meta = {};
                 document.querySelectorAll('meta[name], meta[property]').forEach(m => {
                     const key = m.getAttribute('name') || m.getAttribute('property');
@@ -304,7 +260,7 @@ class BingSearchAgent:
                 });
                 
                 return {
-                    text_content: bodyText.substring(0, 10000),
+                    text_content: bodyText,
                     headings: headings,
                     paragraphs: paragraphs,
                     lists: lists,
@@ -336,207 +292,103 @@ class BingSearchAgent:
             )
             
         except Exception as e:
-            print(f"Extraction error: {e}", file=sys.stderr)
             return None
 
 
 def format_output(results: List[SearchResult]) -> str:
-    """格式化输出为简洁文本"""
-    lines = []
-    lines.append("╔══════════════════════════════════════╗")
-    lines.append("║     🔍 搜神猎手 (SouShen Hunter)      ║")
-    lines.append("╚══════════════════════════════════════╝")
-    lines.append(f"\n🎯 找到 {len(results)} 条结果\n")
-    
-    for i, r in enumerate(results, 1):
-        lines.append(f"[{i}] {r.title}")
-        lines.append(f"    📄 {r.snippet[:150]}..." if len(r.snippet) > 150 else f"    📄 {r.snippet}")
-        lines.append(f"    🔗 {r.url}")
-        lines.append(f"    🏢 {r.source}\n")
-    
-    return '\n'.join(lines)
+    """格式化输出为JSON"""
+    return json.dumps({
+        "tool": "soushen-hunter",
+        "mode": "search",
+        "total": len(results),
+        "results": [asdict(r) for r in results]
+    }, ensure_ascii=False, indent=2)
 
 
-def format_page_elements(elements: PageElements, show_limit: int = 50) -> str:
-    """格式化页面元素输出 - 增强版
+def format_page_elements(elements: PageElements, text_offset: int = 0, text_limit: int = 10000) -> str:
+    """格式化页面元素输出为JSON"""
+    full_text = elements.text_content or ""
+    text_total = len(full_text)
+    text_slice = full_text[text_offset:text_offset + text_limit]
+    has_more_text = (text_offset + text_limit) < text_total
     
-    Args:
-        elements: 页面元素数据
-        show_limit: 显示数量限制（默认50），设为0表示不限制
-    """
-    limit = show_limit if show_limit > 0 else 9999
+    result = {
+        "tool": "soushen-hunter",
+        "mode": "deep",
+        "page": {
+            "title": elements.title,
+            "url": elements.url
+        },
+        "text_content": {
+            "content": text_slice,
+            "offset": text_offset,
+            "length": len(text_slice),
+            "total_length": text_total,
+            "has_more": has_more_text,
+            "next_offset": text_offset + text_limit if has_more_text else None
+        },
+        "cookies": elements.cookies,
+        "headings": elements.headings,
+        "paragraphs": elements.paragraphs,
+        "lists": elements.lists,
+        "tables": elements.tables,
+        "code_blocks": elements.code_blocks,
+        "forms": elements.forms,
+        "links": {
+            "total": len(elements.links),
+            "items": elements.links
+        },
+        "buttons": {
+            "total": len(elements.buttons),
+            "items": elements.buttons
+        },
+        "scripts": elements.scripts,
+        "meta": elements.meta
+    }
     
-    lines = []
-    lines.append("╔══════════════════════════════════════╗")
-    lines.append("║     🔍 搜神猎手 (SouShen Hunter)      ║")
-    lines.append("║      深度页面分析报告                ║")
-    lines.append("╚══════════════════════════════════════╝")
-    lines.append(f"\n📄 页面: {elements.title}")
-    lines.append(f"🔗 URL: {elements.url}")
-    lines.append(f"📊 显示限制: {show_limit} 个/类型\n")
-    
-    # Cookie信息
-    if elements.cookies:
-        total = len(elements.cookies)
-        show = min(total, limit)
-        lines.append(f"🍪 Cookies ({total} 个, 显示{show}个):")
-        for c in elements.cookies[:limit]:
-            lines.append(f"   • {c.get('name', '')}: {c.get('value', '')[:50]}...")
-        if total > limit:
-            lines.append(f"   ... 还有 {total - limit} 个")
-        lines.append("")
-    
-    # 主要内容文本
-    if elements.text_content:
-        lines.append("📝 主要内容:")
-        text = elements.text_content[:2000].replace('\n', ' ')
-        lines.append(f"   {text}...")
-        lines.append("")
-    
-    # 标题结构
-    if elements.headings:
-        total = len(elements.headings)
-        show = min(total, limit)
-        lines.append(f"📌 标题结构 ({total} 个, 显示{show}个):")
-        for h in elements.headings[:limit]:
-            indent = "  " * (h['level'] - 1)
-            lines.append(f"   {indent}{'#' * h['level']} {h['text'][:60]}")
-        if total > limit:
-            lines.append(f"   ... 还有 {total - limit} 个")
-        lines.append("")
-    
-    # 段落
-    if elements.paragraphs:
-        total = len(elements.paragraphs)
-        show = min(total, limit)
-        lines.append(f"📃 关键段落 ({total} 个, 显示{show}个):")
-        for p in elements.paragraphs[:limit]:
-            lines.append(f"   • {p[:150]}...")
-        if total > limit:
-            lines.append(f"   ... 还有 {total - limit} 个")
-        lines.append("")
-    
-    # 列表
-    if elements.lists:
-        total = len(elements.lists)
-        show = min(total, limit)
-        lines.append(f"📋 列表 ({total} 个, 显示{show}个):")
-        for lst in elements.lists[:limit]:
-            lines.append(f"   {lst['type'].upper()} ({len(lst['items'])} 项)")
-            for item in lst['items'][:5]:
-                lines.append(f"     - {item[:80]}")
-        if total > limit:
-            lines.append(f"   ... 还有 {total - limit} 个")
-        lines.append("")
-    
-    # 代码块
-    if elements.code_blocks:
-        total = len(elements.code_blocks)
-        show = min(total, limit)
-        lines.append(f"💻 代码块 ({total} 个, 显示{show}个):")
-        for code in elements.code_blocks[:limit]:
-            preview = code[:100].replace('\n', ' ')
-            lines.append(f"   ```{preview}...```")
-        if total > limit:
-            lines.append(f"   ... 还有 {total - limit} 个")
-        lines.append("")
-    
-    # 表单（Pentest重点）- 全显示
-    if elements.forms:
-        total = len(elements.forms)
-        lines.append(f"🎯 表单 ({total} 个) - Pentest重点:")
-        for form in elements.forms:
-            lines.append(f"   • Form: {form.get('name', 'unnamed')}")
-            lines.append(f"     Action: {form['action']}")
-            lines.append(f"     Method: {form['method']}")
-            lines.append(f"     字段:")
-            for inp in form['inputs']:
-                req = " [必填]" if inp.get('required') else ""
-                ph = f" placeholder='{inp.get('placeholder', '')}'" if inp.get('placeholder') else ""
-                lines.append(f"       - {inp['name']} ({inp['type']}){req}{ph}")
-        lines.append("")
-    
-    # API端点/链接
-    if elements.links:
-        total = len(elements.links)
-        show = min(total, limit)
-        api_links = [l for l in elements.links if '/api/' in l['href'] or 'graphql' in l['href']]
-        lines.append(f"⛓️  链接 ({total} 个, 显示{show}个):")
-        if api_links:
-            lines.append(f"   🔥 API端点发现 ({len(api_links)} 个):")
-            for link in api_links[:limit]:
-                lines.append(f"      • {link['text'][:30]} → {link['href'][:60]}")
-        for link in elements.links[:limit]:
-            if link not in api_links:
-                lines.append(f"   • {link['text'][:30]} → {link['href'][:60]}")
-        if total > limit:
-            lines.append(f"   ... 还有 {total - limit} 个")
-        lines.append("")
-    
-    # 按钮
-    if elements.buttons:
-        total = len(elements.buttons)
-        show = min(total, limit)
-        lines.append(f"🔘 交互按钮 ({total} 个, 显示{show}个):")
-        for btn in elements.buttons[:limit]:
-            action = f" [{btn.get('action', '')[:30]}]" if btn.get('action') else ""
-            lines.append(f"   • {btn['text']}{action}")
-        if total > limit:
-            lines.append(f"   ... 还有 {total - limit} 个")
-        lines.append("")
-    
-    # 外部脚本
-    if elements.scripts:
-        total = len(elements.scripts)
-        show = min(total, limit)
-        lines.append(f"📜 外部脚本 ({total} 个, 显示{show}个):")
-        for script in elements.scripts[:limit]:
-            lines.append(f"   • {script}")
-        if total > limit:
-            lines.append(f"   ... 还有 {total - limit} 个")
-        lines.append("")
-    
-    # 元数据
-    if elements.meta:
-        important = ['description', 'keywords', 'author', 'csrf-token', 'csrf_token']
-        found = {k: v for k, v in elements.meta.items() if any(i in k.lower() for i in important)}
-        if found:
-            lines.append("🏷️  关键Meta:")
-            for k, v in list(found.items())[:limit]:
-                lines.append(f"   • {k}: {v[:80]}")
-            lines.append("")
-    
-    return '\n'.join(lines)
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 def parse_args():
     """解析命令行参数"""
     args = sys.argv[1:]
-    result = {'mode': None, 'query': None, 'url': None, 'limit': 50}
+    result = {
+        'mode': None,
+        'query': None,
+        'url': None,
+        'text_offset': 0,
+        'text_limit': 10000
+    }
     
-    # 解析 --limit 参数
-    if '--limit' in args:
-        limit_idx = args.index('--limit')
-        if limit_idx + 1 < len(args):
+    if '--text-offset' in args:
+        idx = args.index('--text-offset')
+        if idx + 1 < len(args):
             try:
-                result['limit'] = int(args[limit_idx + 1])
-                args.pop(limit_idx + 1)
-                args.pop(limit_idx)
+                result['text_offset'] = int(args[idx + 1])
+                args.pop(idx + 1)
+                args.pop(idx)
             except ValueError:
                 pass
     
-    # 检查是否是深度分析模式
+    if '--text-limit' in args:
+        idx = args.index('--text-limit')
+        if idx + 1 < len(args):
+            try:
+                result['text_limit'] = int(args[idx + 1])
+                args.pop(idx + 1)
+                args.pop(idx)
+            except ValueError:
+                pass
+    
     if '--deep' in args:
         deep_idx = args.index('--deep')
         if deep_idx + 1 >= len(args):
-            print("Error: --deep requires a URL argument")
-            print("Usage: python bing_search.py --deep <url> [--limit N]")
+            print(json.dumps({"error": "--deep requires a URL argument"}, ensure_ascii=False))
             sys.exit(1)
         result['mode'] = 'deep'
         result['url'] = args[deep_idx + 1]
         return result
     
-    # 普通搜索模式
     if len(args) < 1:
         return None
     
@@ -550,45 +402,44 @@ async def main():
     parsed = parse_args()
     
     if parsed is None:
-        print("Usage:")
-        print("  python bing_search.py <query>                    # Bing 搜索")
-        print("  python bing_search.py --deep <url> [--limit N]   # 深度页面分析")
-        print("\nOptions:")
-        print("  --limit N      每种类型最大提取数量 (默认50)")
-        print("\nExamples:")
-        print('  python bing_search.py "OpenClaw AI"')
-        print('  python bing_search.py --deep https://example.com')
-        print('  python bing_search.py --deep https://example.com --limit 100')
-        print("\nEnvironment variables:")
-        print("  CHROME_PATH    Path to Chrome executable (optional)")
+        help_text = {
+            "tool": "soushen-hunter",
+            "usage": {
+                "search": "python bing_search.py <query>",
+                "deep": "python bing_search.py --deep <url> [--text-offset N] [--text-limit N]"
+            },
+            "options": {
+                "--text-offset": "文本起始位置 (默认0)",
+                "--text-limit": "文本长度限制 (默认10000)"
+            },
+            "examples": [
+                "python bing_search.py 'OpenClaw AI'",
+                "python bing_search.py --deep https://example.com",
+                "python bing_search.py --deep https://example.com --text-limit 50000",
+                "python bing_search.py --deep https://example.com --text-offset 10000 --text-limit 10000"
+            ],
+            "env": {
+                "CHROME_PATH": "Chrome可执行文件路径 (可选)"
+            }
+        }
+        print(json.dumps(help_text, ensure_ascii=False, indent=2))
         sys.exit(1)
     
-    # 支持通过环境变量指定 Chrome 路径
     chrome_path = os.environ.get('CHROME_PATH') or os.environ.get('CHROME_BIN')
     
     async with BingSearchAgent(headless=True, chrome_path=chrome_path) as agent:
         if parsed['mode'] == 'deep':
-            # 深度分析模式 - 全面自动化提取
             url = parsed['url']
-            show_limit = parsed.get('limit', 50)
-            print("╔══════════════════════════════════════╗")
-            print("║     🔍 搜神猎手 (SouShen Hunter)      ║")
-            print("║      正在执行深度页面分析...          ║")
-            print("╚══════════════════════════════════════╝")
-            print(f"\n🎯 目标: {url}\n")
+            text_offset = parsed.get('text_offset', 0)
+            text_limit = parsed.get('text_limit', 10000)
             elements = await agent.extract_page_elements(url)
             if elements:
-                print(format_page_elements(elements, show_limit=show_limit))
+                print(format_page_elements(elements, text_offset=text_offset, text_limit=text_limit))
             else:
-                print("❌ 页面分析失败")
+                print(json.dumps({"error": "页面分析失败"}, ensure_ascii=False))
         else:
-            # 搜索模式
             results = await agent.search(parsed['query'], num_results=10)
             print(format_output(results))
-            
-            # 同时输出 JSON 格式供程序使用
-            print("\n---JSON---")
-            print(json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':
