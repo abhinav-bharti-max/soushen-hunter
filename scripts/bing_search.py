@@ -269,7 +269,10 @@ class BingSearchAgent:
 def format_output(results: List[SearchResult]) -> str:
     """格式化输出为简洁文本"""
     lines = []
-    lines.append(f"🔍 找到 {len(results)} 条结果\n")
+    lines.append("╔══════════════════════════════════════╗")
+    lines.append("║     🔍 搜神猎手 (SouShen Hunter)      ║")
+    lines.append("╚══════════════════════════════════════╝")
+    lines.append(f"\n🎯 找到 {len(results)} 条结果\n")
     
     for i, r in enumerate(results, 1):
         lines.append(f"[{i}] {r.title}")
@@ -283,7 +286,11 @@ def format_output(results: List[SearchResult]) -> str:
 def format_page_elements(elements: PageElements) -> str:
     """格式化页面元素输出"""
     lines = []
-    lines.append(f"📄 页面: {elements.title}")
+    lines.append("╔══════════════════════════════════════╗")
+    lines.append("║     🔍 搜神猎手 (SouShen Hunter)      ║")
+    lines.append("║      深度页面分析报告                ║")
+    lines.append("╚══════════════════════════════════════╝")
+    lines.append(f"\n📄 页面: {elements.title}")
     lines.append(f"🔗 URL: {elements.url}\n")
     
     lines.append(f"⛓️  链接 ({len(elements.links)} 个):")
@@ -361,7 +368,11 @@ async def main():
         if parsed['mode'] == 'deep':
             # 深度分析模式 - 全面自动化提取
             url = parsed['url']
-            print(f"🔍 正在深度分析: {url}\n")
+            print("╔══════════════════════════════════════╗")
+            print("║     🔍 搜神猎手 (SouShen Hunter)      ║")
+            print("║      正在执行深度页面分析...          ║")
+            print("╚══════════════════════════════════════╝")
+            print(f"\n🎯 目标: {url}\n")
             elements = await agent.extract_page_elements(url)
             if elements:
                 print(format_page_elements(elements))

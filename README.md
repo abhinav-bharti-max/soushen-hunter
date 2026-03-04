@@ -48,11 +48,15 @@ python scripts/bing_search.py "搜索关键词"
 ### CLI 命令
 
 ```bash
-# Bing 搜索
-python scripts/bing_search.py "搜索关键词"
+# 搜神搜索
+./soushen "搜索关键词"
+# 或
+python soushen "搜索关键词"
 
 # 深度页面分析（自动化全面提取）
-python scripts/bing_search.py --deep "https://目标网址"
+./soushen --deep "https://目标网址"
+# 或
+python soushen --deep "https://目标网址"
 ```
 
 ### Python API
