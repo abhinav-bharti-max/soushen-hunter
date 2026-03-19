@@ -46,23 +46,20 @@ class TavilySearchAgent:
         """执行 Tavily 搜索并返回结构化结果"""
         results = []
 
-        try:
-            response = self.client.search(
-                query=query,
-                max_results=num_results,
-                search_depth="basic",
-            )
+        response = self.client.search(
+            query=query,
+            max_results=num_results,
+            search_depth="basic",
+        )
 
-            for item in response.get("results", []):
-                results.append(SearchResult(
-                    title=item.get("title", ""),
-                    url=item.get("url", ""),
-                    snippet=item.get("content", ""),
-                    source=item.get("url", "").split("/")[2] if item.get("url", "").startswith("http") else "",
-                    result_type="organic"
-                ))
-        except Exception:
-            pass
+        for item in response.get("results", []):
+            results.append(SearchResult(
+                title=item.get("title", ""),
+                url=item.get("url", ""),
+                snippet=item.get("content", ""),
+                source=item.get("url", "").split("/")[2] if item.get("url", "").startswith("http") else "",
+                result_type="organic"
+            ))
 
         return results[:num_results]
 

@@ -44,7 +44,7 @@ def print_banner():
     """打印品牌标识"""
     print("╔══════════════════════════════════════╗")
     print("║     🔍 搜神猎手 (SouShen Hunter)      ║")
-    print("║   高性能搜索引擎 - 零 API 费用       ║")
+    print("║   高性能搜索引擎                      ║")
     print("╚══════════════════════════════════════╝")
     print()
 
@@ -201,7 +201,11 @@ def main():
                     results = await agent.search(query, num_results=num_results)
                     print(format_output(results))
 
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except ValueError as e:
+        print(json.dumps({"error": str(e)}, ensure_ascii=False))
+        sys.exit(1)
 
 
 if __name__ == '__main__':
