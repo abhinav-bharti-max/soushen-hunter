@@ -2,12 +2,13 @@
 
 > "搜索如狩猎，信息即猎物"
 
-高性能 Bing/Google 搜索引擎 Skill for OpenClaw - 无需 API 费用，深度网页元素提取
+高性能 Bing/Google/Tavily 搜索引擎 Skill for OpenClaw - 多引擎可选，深度网页元素提取
 
 ## ✨ 特性
 
 - 🔍 **Bing 搜索** - 使用 Playwright 底层 API，零 API 费用
 - 🌐 **Google 搜索** - 高级反检测策略，绕过人机验证
+- 🚀 **Tavily 搜索** - REST API 模式，无需浏览器，快速稳定
 - 🎯 **深度提取** - 自动提取页面链接、表单、按钮、脚本
 - ⚡ **高性能** - 异步架构，快速响应
 - 🛡️ **反检测** - 绕过反爬虫机制（用户数据目录、行为模拟、指纹伪装）
@@ -28,7 +29,8 @@ cp -r soushen-hunter ~/.openclaw/skills/
 ## 🔧 依赖
 
 ```bash
-pip install playwright
+pip install playwright        # Bing/Google 引擎
+pip install tavily-python     # Tavily 引擎
 ```
 
 **Chrome 自动检测**
@@ -43,6 +45,14 @@ pip install playwright
 ```bash
 export CHROME_PATH=/usr/bin/google-chrome
 ./soushen "搜索关键词"
+```
+
+**Tavily API 密钥**（使用 Tavily 引擎时必须）
+
+在 https://app.tavily.com 免费获取 API 密钥（每月 1,000 次免费额度）：
+```bash
+export TAVILY_API_KEY=tvly-your-api-key
+./soushen "搜索关键词" --engine tavily
 ```
 
 ## 🚀 使用
@@ -66,6 +76,7 @@ export CHROME_PATH=/usr/bin/google-chrome
 # 设置默认搜索引擎
 ./soushen --set-default-engine google
 ./soushen --set-default-engine bing
+./soushen --set-default-engine tavily
 
 # 查看配置
 ./soushen --config
@@ -93,6 +104,15 @@ python scripts/google_search.py "AI Agent" --num 20
 
 # 深度页面分析
 python scripts/google_search.py --deep "https://目标网址"
+```
+
+**Tavily 搜索**
+```bash
+# 基础搜索（需要 TAVILY_API_KEY 环境变量）
+python scripts/tavily_search.py "搜索关键词"
+
+# 指定结果数量
+python scripts/tavily_search.py "AI Agent" --num 20
 ```
 
 ### Python API
@@ -125,6 +145,20 @@ async def main():
 asyncio.run(main())
 ```
 
+**Tavily 搜索**
+```python
+from scripts.tavily_search import TavilySearchAgent
+import asyncio
+
+async def main():
+    async with TavilySearchAgent() as agent:
+        results = await agent.search("OpenClaw AI Agent")
+        for r in results:
+            print(f"{r.title}: {r.url}")
+
+asyncio.run(main())
+```
+
 **深度页面分析**
 ```python
 # 使用 Bing 引擎
@@ -148,7 +182,8 @@ soushen-hunter/
 ├── .soushen_config.json  # 配置文件（自动生成）
 └── scripts/
     ├── bing_search.py    # Bing 搜索脚本
-    └── google_search.py  # Google 搜索脚本
+    ├── google_search.py  # Google 搜索脚本
+    └── tavily_search.py  # Tavily 搜索脚本
 ```
 
 ## ⚙️ 配置文件
@@ -162,7 +197,7 @@ soushen-hunter/
 }
 ```
 
-- `default_engine`: 默认搜索引擎（`bing` 或 `google`）
+- `default_engine`: 默认搜索引擎（`bing`、`google` 或 `tavily`）
 - `default_num_results`: 默认返回结果数量
 
 可通过命令修改：
